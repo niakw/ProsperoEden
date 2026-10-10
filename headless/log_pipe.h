@@ -208,7 +208,8 @@ inline void Register(LogPipe* err, LogPipe* out) noexcept {
     output_pipe = out;
 }
 inline void SetDetailed(bool value) noexcept {
-    detailed.store(value, std::memory_order_relaxed);
+    if (detailed.exchange(value, std::memory_order_relaxed) != value)
+        generation.fetch_add(1, std::memory_order_relaxed);
     if (error_pipe) (void)error_pipe->SetEnabled(value);
     if (output_pipe) (void)output_pipe->SetEnabled(value);
 }
