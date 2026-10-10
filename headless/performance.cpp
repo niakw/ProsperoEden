@@ -963,7 +963,7 @@ void ReportGpuThread(unsigned frame) {
     // or counters are touched; this runs only inside ReportGpuThread's opt-in
     // five-second diagnostic callback. Values are cumulative, not FPS.
     std::printf("EDEN_GPU_COMMANDS frame=%u tick_calls=%llu tick_ns=%llu "
-                "flush_calls=%llu flush_ns=%llu invalidate_calls=%llu invalidate_ns=%llu\\n",
+                "flush_calls=%llu flush_ns=%llu invalidate_calls=%llu invalidate_ns=%llu\n",
                 frame, load(gpu_command_tick, true), load(gpu_command_tick, false),
                 load(gpu_command_flush, true), load(gpu_command_flush, false),
                 load(gpu_command_invalidate, true), load(gpu_command_invalidate, false));
