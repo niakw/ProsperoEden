@@ -30,6 +30,16 @@ for name in ("guest_write_timer", "guest_read_timer", "drain_timer", "present_wa
 assert "if (::Eden::Performance::detailed_gpu_profile.load(std::memory_order_relaxed))\\n" in generator
 assert "::Eden::Performance::rasterizer_draw.calls.fetch_add(1, std::memory_order_relaxed)" in generator
 assert "using CommandQueue = Common::SPSCQueue<CommandDataContainer, 8>;" in cmake
+assert "gpu_command_tick, gpu_command_flush, gpu_command_invalidate" in perf
+report = read("headless/performance.cpp")
+assert 'EDEN_GPU_COMMANDS frame=%u tick_calls=%llu' in report
+for kind in ("tick", "flush", "invalidate"):
+    assert 'set(metric "gpu_command_' + kind + '")' in cmake
+assert 'DiagnosticTimer category_timer(::Eden::Performance::${metric});' in cmake
+assert 'if(gpu_call_at LESS 0)' in cmake
+# No diagnostic timer may alter queue depth, the restart/stop semantics,
+# Vulkan profile choices or GPU emulation results.
+assert 'std::this_thread::sleep_for(std::chrono::microseconds(100));' in cmake
 # We have not changed the tested native queue algorithm or guest/cache locking order.
 assert "state.queue.TryEmplace(std::move(command_data), fence, block)" in cmake
 assert "std::lock_guard lock{texture_cache.mutex, std::adopt_lock};" in generator
