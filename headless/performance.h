@@ -93,6 +93,14 @@ inline std::atomic<unsigned> cache_lock_spins{0};
 inline std::atomic<unsigned long long> cache_lock_contended{0}, cache_lock_blocked{0};
 template <typename Mutex>
 inline void GuestCacheLock(Mutex& mutex) {
+    // Source of thousands of contended-cache atomic writes in FC27. When
+    // diagnostics are OFF use the exact upstream blocking mutex path; do not
+    // try_lock first or hammer two shared accounting cache lines per miss.
+    // This changes instrumentation, NOT GPU/guest lock ownership or order.
+    if (!detailed_gpu_profile.load(std::memory_order_relaxed)) {
+        mutex.lock();
+        return;
+    }
     if (mutex.try_lock()) return;
     cache_lock_contended.fetch_add(1, std::memory_order_relaxed);
     for (unsigned tries = cache_lock_spins.load(std::memory_order_relaxed); tries != 0; --tries) {
@@ -233,6 +241,30 @@ private:
     Totals& totals;
     unsigned long long requested_bytes;
     std::chrono::nanoseconds start;
+};
+
+// GPU/guest waits can execute many thousands of times per second. A normal
+// game must never sample two wall clocks or update global Totals for each
+// dispatch/lock solely because the binary was compiled as EDEN_DEV_PROFILE.
+// Expensive per-command timing is only active with Detailed Logging.
+class DiagnosticTimer {
+public:
+    explicit DiagnosticTimer(Totals& target) noexcept
+        : totals(detailed_gpu_profile.load(std::memory_order_relaxed) ? &target : nullptr) {
+        if (totals) start = Common::g_wall_clock.GetTimeNS();
+    }
+    DiagnosticTimer(const DiagnosticTimer&) = delete;
+    DiagnosticTimer& operator=(const DiagnosticTimer&) = delete;
+    ~DiagnosticTimer() {
+        if (!totals) return;
+        const auto elapsed = (Common::g_wall_clock.GetTimeNS() - start).count();
+        totals->nanoseconds.fetch_add(static_cast<unsigned long long>(elapsed),
+                                      std::memory_order_relaxed);
+        totals->calls.fetch_add(1, std::memory_order_relaxed);
+    }
+private:
+    Totals* totals{};
+    std::chrono::nanoseconds start{};
 };
 
 // Opt-in API wall times: calls may overlap across threads, so do not sum them as frame time.
