@@ -80,6 +80,10 @@ inline Totals storage;
 inline Totals jit_protection;
 inline Totals rasterizer_draw;
 inline Totals gpu_queue_wait, gpu_dispatch;
+// Classify long-running GPU worker commands only with Detailed Logging ON.
+// GPU submit is already recorded in gpu_dispatch; the other commands must
+// not be misattributed to shader compilation or guest JIT.
+inline Totals gpu_command_tick, gpu_command_flush, gpu_command_invalidate;
 // Producer-side waits outside the dispatch timer: forced fence drains on the GPU
 // thread, free presentation-frame waits, and guest pushes into a full GPU queue.
 inline Totals gpu_fence_drain, gpu_present_wait, gpu_queue_full;
