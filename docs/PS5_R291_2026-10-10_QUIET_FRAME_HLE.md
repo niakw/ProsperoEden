@@ -50,7 +50,7 @@ PKG and compare the same scenes before/after; retain the old build for rollback.
    - `gpu_dispatch_ms`, `gpu_fence_ms`, `gpu_present_ms`, `gpu_full_ms`
    - `guest_dequeue_ms`, `guest_sync_ms`, `guest_ipc_ms`
    - `cache_contended`, `cache_blocked`, `jit_ms`.
-   
+
    These are per-window **counter deltas**, not a decomposition of one frame
    into nonoverlapping stages: concurrent threads can overlap and must not be
    summed as frame time. A negative/resetted counter marks the window invalid.
