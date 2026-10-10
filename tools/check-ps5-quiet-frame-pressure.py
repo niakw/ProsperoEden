@@ -77,7 +77,7 @@ assert "double capture_start{-1};" in graphics
 assert "bool captured_passes{};" in graphics
 assert "static const double capture_start = now;" not in graphics
 assert "detailed_gpu_profile.load(std::memory_order_relaxed) &&" in graphics
-assert "&& !captured_passes)" in graphics
+assert "!captured_passes) {" in graphics
 assert "EDEN_DEV_PASS_REQUEST time=%.3f" in graphics
 
 print("PASS: quiet GPU frame callback, HLE hot-path bypass, per-title counters")
