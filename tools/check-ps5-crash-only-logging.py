@@ -69,6 +69,19 @@ assert '.encore-backport-ps5-crash-only-logging.sha256' in read("tools/apply-ede
 assert 'const bool saved = WriteFile(report_path.data, report.data, report.size);' in crash
 assert 'const std::string index_file = logs_folder + "/crash-index.txt";' in crash
 assert 'Eden::Crash::Install(Eden::LogsDir()' in main
+crash_header = read("headless/crash_report.h")
+crash_source = read("headless/crash_report.cpp")
+gpu_worker_generator = read("headless/CMakeLists.txt")
+watchdog = read("headless/stall_watchdog.h")
+assert 'inline std::atomic<std::uint64_t> gpu_completed_commands{0};' in crash_header
+assert 'inline std::atomic<unsigned> gpu_stall_suspicions{0};' in crash_header
+assert 'gpu_completed_commands.load(std::memory_order_relaxed)' in crash_source
+assert 'gpu_stall_suspicions.load(std::memory_order_relaxed)' in crash_source
+assert '(++completed_gpu_commands & 63u) == 0u' in gpu_worker_generator
+assert 'gpu_completed_commands.fetch_add(64, std::memory_order_relaxed);' in gpu_worker_generator
+assert 'Crash::gpu_completed_commands.load(std::memory_order_relaxed)' in watchdog
+assert 'Crash::gpu_stall_suspicions.fetch_add(1, std::memory_order_relaxed)' in watchdog
+assert 'if (!Performance::detailed_gpu_profile.load(std::memory_order_relaxed)) return;' in watchdog
 
 source = r"""
 #include <cassert>
