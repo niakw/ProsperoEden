@@ -959,6 +959,14 @@ void ReportGpuThread(unsigned frame) {
                 load(gpu_fence_drain, true), load(gpu_fence_drain, false),
                 load(gpu_present_wait, true), load(gpu_present_wait, false),
                 load(gpu_queue_full, true), load(gpu_queue_full, false), load(rasterizer_draw, true));
+    // Breakdown of GPU-owner command types. In the R293 quiet path no clocks
+    // or counters are touched; this runs only inside ReportGpuThread's opt-in
+    // five-second diagnostic callback. Values are cumulative, not FPS.
+    std::printf("EDEN_GPU_COMMANDS frame=%u tick_calls=%llu tick_ns=%llu "
+                "flush_calls=%llu flush_ns=%llu invalidate_calls=%llu invalidate_ns=%llu\\n",
+                frame, load(gpu_command_tick, true), load(gpu_command_tick, false),
+                load(gpu_command_flush, true), load(gpu_command_flush, false),
+                load(gpu_command_invalidate, true), load(gpu_command_invalidate, false));
     std::printf("EDEN_DEV_GUEST cpu_write_calls=%llu cpu_write_ns=%llu cpu_read_calls=%llu cpu_read_ns=%llu "
                 "sync_calls=%llu sync_ns=%llu dequeue_calls=%llu dequeue_ns=%llu",
                 load(guest_cpu_write, true), load(guest_cpu_write, false),
