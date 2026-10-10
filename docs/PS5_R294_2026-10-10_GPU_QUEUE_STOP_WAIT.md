@@ -79,3 +79,12 @@ expensive CPU/renderer serialization. The measurement deliberately excludes
 optional try-lock spinning and cannot by itself prove GPU hardware occupancy.
 With Detailed Logging OFF the mutex uses the original direct lock and never
 samples a clock or updates the diagnostic wait counter.
+
+## Native build validation strengthening
+
+Before all-on native compilation, `tools/build-headless-native.sh` now also
+runs the real generated-worker lifecycle and full-queue cancellation tests.
+The generated SPSC header is used by the cancellation harness, with the
+optional per-request DEV timer removed *only inside that fixture*. This
+prevents a successful source-only check from masking a broken CMake-derived
+GPU worker, and catches a missed stop-token wake before distributing a PKG.
