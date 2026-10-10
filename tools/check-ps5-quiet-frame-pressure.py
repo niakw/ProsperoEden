@@ -18,7 +18,7 @@ cmake = read("headless/CMakeLists.txt")
 # quiet/detailed controls only the expensive instrumentation.
 assert "inline std::atomic<bool> detailed_gpu_profile{false};" in perf
 assert "const bool deep_frame_profile = !performance_run &&" in main
-assert "launch_preferences.detailed_logging ||" in main
+assert "const bool deep_frame_profile = !performance_run && launch_preferences.detailed_logging;" in main
 assert "const bool deep_frame_profile = !performance_run && launch_preferences.detailed_logging;" in main
 assert 'std::filesystem::exists(Eden::AppFile("frame-profile.txt"))' not in main
 assert "Eden::NativeLogs::Detailed()" in graphics
