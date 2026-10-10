@@ -13,6 +13,7 @@
 #include <thread>
 #include "diagnostics.h"
 #include "performance.h"
+#include "crash_report.h"
 #include "game_liveness.h"
 
 extern "C" unsigned long eden_heap_create_lock_state(unsigned* waiters);
@@ -25,6 +26,9 @@ inline std::atomic<unsigned> game_session_epoch{0};
 inline std::atomic<const char*> stage{"none"};
 
 inline void Print(const char* line) {
+    // Developer progress messages belong to Detailed Logging only.
+    // Quiet sessions keep useful fault breadcrumbs in Crash atomics, not klog.
+    if (!Performance::detailed_gpu_profile.load(std::memory_order_relaxed)) return;
 #if defined(__PROSPERO__)
     (void)sceKernelDebugOutText(0, line);
 #else
@@ -77,10 +81,16 @@ inline void Loop() {
                 std::chrono::duration_cast<std::chrono::seconds>(
                     now.time_since_epoch()).count());
             const GameLiveness::Counters counters{
-                Performance::gpu_dispatch.calls.load(std::memory_order_relaxed),
-                Performance::rasterizer_draw.calls.load(std::memory_order_relaxed)};
+                // One relaxed write per 64 completed GPU commands, even when
+                // R293 disables costly per-command diagnostics.
+                Crash::gpu_completed_commands.load(std::memory_order_relaxed),
+                Performance::detailed_gpu_profile.load(std::memory_order_relaxed) ?
+                    Performance::rasterizer_draw.calls.load(std::memory_order_relaxed) : 0ull};
             const auto observation = game_probe.Observe(counters, wall_second);
             if (observation.suspected) {
+                Crash::gpu_stall_suspicions.fetch_add(1, std::memory_order_relaxed);
+                if (!Performance::detailed_gpu_profile.load(std::memory_order_relaxed))
+                    continue;  // only the fatal crash report may persist it.
                 char line[340];
                 std::snprintf(line, sizeof(line),
                     "EDEN_GAME_GPU_STALL_SUSPECT idle_s=%llu dispatch=%llu draws=%llu "
@@ -130,6 +140,7 @@ inline void Arm() {
 }
 inline void Disarm() { armed.store(false, std::memory_order_release); }
 inline void ArmGame() {
+    Crash::gpu_stall_suspicions.store(0, std::memory_order_relaxed);
     game_session_epoch.fetch_add(1, std::memory_order_acq_rel);
     game_armed.store(true, std::memory_order_release);
 }
