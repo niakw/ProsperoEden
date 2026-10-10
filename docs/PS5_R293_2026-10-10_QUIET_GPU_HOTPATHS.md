@@ -74,3 +74,20 @@ A genuinely large GPU dispatcher stall will **not** be fixed solely by
 eliminating instrumentation. Follow-up work must trace slow GPU submissions
 and their shader/texture/driver stages on real hardware. Neither 60fps nor
 zero stutter can presently be claimed.
+
+## Opt-in command-classification traces
+
+The R293 diagnostic GPU report now includes a bounded five-second cumulative
+`EDEN_GPU_COMMANDS` line with `tick_calls/tick_ns`,
+`flush_calls/flush_ns` and `invalidate_calls/invalidate_ns`.
+Submission work remains represented by the existing
+`EDEN_DEV_GPU dispatch_calls/dispatch_ns` values. It separates an
+abnormally long shader/graphics submission from GPU worker cache-flush,
+maintenance tick and invalidation work. These categories are collected
+**only with Detailed Logging enabled**; the quiet path performs no clock
+sampling, atomic accounting or extra output for them.
+
+Core-only preflight validated this source at
+[run #38083802816](https://github.com/niakw/Prospero.Eden-Encore/actions/runs/38083802816)
+(SUCCESS, host-only). A native test build and hardware frame-pacing comparison
+are still necessary.
