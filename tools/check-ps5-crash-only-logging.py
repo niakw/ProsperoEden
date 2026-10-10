@@ -40,6 +40,13 @@ assert 'Eden::NativeLogs::SetDetailed(value.detailed_logging);' in service
 assert 'if (saved) {' in service.split('bool EdenServices::set_preferences(', 1)[1]
 assert 'Eden::BootTrace::Quiet(Eden::LogsDir());' in service
 assert "inline bool& QuietMode()" in boot
+graphics = read("headless/graphics.cpp")
+assert "if (Eden::NativeLogs::Detailed()) {" in graphics
+assert "frame_pressure_previous = CaptureFramePressure();" in graphics
+assert 'std::filesystem::exists(Eden::AppFile("frame-profile.txt"))' not in main
+assert 'const bool deep_frame_profile = !performance_run && launch_preferences.detailed_logging;' in main
+assert 'Eden::Performance::vulkan_cost_enabled = launch_preferences.detailed_logging &&' in main
+assert 'const bool pc_sample_run = launch_preferences.detailed_logging &&' in main
 assert 'if (detail::QuietMode()) return;' in boot
 assert 'std::remove("/download0/boot-trace.txt");' in boot
 assert 'std::remove("/download0/boot-trace.prev.txt");' in boot
