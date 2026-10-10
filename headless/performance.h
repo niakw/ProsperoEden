@@ -127,6 +127,10 @@ inline std::atomic<bool> graphics_memory_short{false};
 inline constexpr std::size_t kShortMemory = std::size_t{384} << 20;
 // Development: the texture cache reports its memory use and marks every 300 frames.
 inline std::atomic<bool> texture_budget_log{false};
+// Native DEV: expensive GPU-thread/HLE/CPU-snapshot reporting is opt-in.
+// The lightweight frame-pacing counters still run in quiet gameplay.
+// Reset per title, rather than inheriting a prior game's diagnostic session.
+inline std::atomic<bool> detailed_gpu_profile{false};
 // "Is memory short?", installed by the PS5 build (performance.cpp, GraphicsMemoryShort). This
 // header is compiled into libraries with and without PS5_NATIVE, so the function below must read
 // the same in all of them: the platform part is behind this pointer, not behind an #ifdef.
