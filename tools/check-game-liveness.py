@@ -15,8 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 source = (ROOT / "headless" / "stall_watchdog.h").read_text()
 main = (ROOT / "headless" / "main.cpp").read_text()
 assert "EDEN_GAME_GPU_STALL_SUSPECT" in source
-assert "Performance::gpu_dispatch.calls.load" in source
+assert "Crash::gpu_completed_commands.load" in source
+assert "Crash::gpu_stall_suspicions.fetch_add(1, std::memory_order_relaxed);" in source
+assert "if (!Performance::detailed_gpu_profile.load(std::memory_order_relaxed)) return;" in source
 assert "Performance::rasterizer_draw.calls.load" in source
+assert 'Crash::gpu_stall_suspicions.store(0, std::memory_order_relaxed);' in source
 assert "game_probe.Observe(" in source
 assert "game_armed.load(" in source
 assert "game_session_epoch.fetch_add(1" in source
