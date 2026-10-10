@@ -1987,10 +1987,10 @@ if(EDEN_PS5_OPENGL)
         if(EDEN_DEV_PROFILE)
             string(PREPEND gpu_worker "#include \"${EDEN_PORT_DIR}/performance.h\"\n")
             string(REPLACE "${hud_wait}"
-                "            { ::Eden::Performance::Timer idle_timer(::Eden::Performance::gpu_queue_wait);\n${hud_wait}\n            }"
+                "            { ::Eden::Performance::DiagnosticTimer idle_timer(::Eden::Performance::gpu_queue_wait);\n${hud_wait}\n            }"
                 gpu_worker "${gpu_worker}")
             string(REPLACE "${dispatch_call}"
-                "                { ::Eden::Performance::Timer dispatch_timer(::Eden::Performance::gpu_dispatch);\n${dispatch_call}\n                }"
+                "                { ::Eden::Performance::DiagnosticTimer dispatch_timer(::Eden::Performance::gpu_dispatch);\n${dispatch_call}\n                }"
                 gpu_worker "${gpu_worker}")
             string(REPLACE "if (count <= 3) LOG_INFO(Render_OpenGL, \"EDEN_GPU_DISPATCH_"
                 "if (count <= 3 || ::Eden::Performance::BootTrace()) LOG_INFO(Render_OpenGL, \"EDEN_GPU_DISPATCH_"
@@ -2002,7 +2002,7 @@ if(EDEN_PS5_OPENGL)
                 message(FATAL_ERROR "Pinned GPU queue push changed")
             endif()
             string(REPLACE "${full_wait}"
-                "    if (stop_source.stop_requested() ||\n        !state.queue.TryEmplace(std::move(command_data), fence, block)) {\n        ::Eden::Performance::Timer full_timer(::Eden::Performance::gpu_queue_full);\n${full_wait}\n    }"
+                "    if (stop_source.stop_requested() ||\n        !state.queue.TryEmplace(std::move(command_data), fence, block)) {\n        ::Eden::Performance::DiagnosticTimer full_timer(::Eden::Performance::gpu_queue_full);\n${full_wait}\n    }"
                 gpu_worker "${gpu_worker}")
         endif()
         write_derived("${PORT_BUILD_DIR}/gpu_thread.cpp" "${gpu_worker}")
