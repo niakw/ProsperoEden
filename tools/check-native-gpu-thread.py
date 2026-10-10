@@ -19,7 +19,7 @@ for call, timer, indent in (
     ('            state.queue.PopWait(next, stop_token);',
      'idle_timer(::Eden::Performance::gpu_queue_wait)', '            '),
 ):
-    wrapped = indent + '{ ::Eden::Performance::Timer ' + timer + ';\n' + call + '\n' + indent + '}'
+    wrapped = indent + '{ ::Eden::Performance::DiagnosticTimer ' + timer + ';\n' + call + '\n' + indent + '}'
     assert worker.count(wrapped) == int(development)
     worker = worker.replace(wrapped, call)
 
@@ -30,6 +30,43 @@ dispatch_trace = ('                const auto count = ++dispatches;\n'
                   f'                if ({trace_when}) LOG_INFO(Render_OpenGL, "EDEN_GPU_DISPATCH_END count={{}}", count);')
 assert worker.count(dispatch_trace) == 1
 untraced = worker.replace(dispatch_trace, dispatch_call).replace('        unsigned dispatches = 0;\n', '')
+# R293 diagnostic-only timers wrap the other three GPU worker command types.
+# Restore original calls when comparing the generated worker to pinned Eden.
+for metric, call in (
+    ('gpu_command_tick', '                system.GPU().TickWork();'),
+    ('gpu_command_flush', '                renderer.ReadRasterizer()->FlushRegion(flush->addr, flush->size);'),
+    ('gpu_command_invalidate',
+     '                renderer.ReadRasterizer()->OnCacheInvalidation(invalidate->addr, invalidate->size);'),
+):
+    wrapped = ('                { ::Eden::Performance::DiagnosticTimer category_timer('
+               '::Eden::Performance::' + metric + ');\n' + call + '\n                }')
+    assert untraced.count(wrapped) == int(development)
+    untraced = untraced.replace(wrapped, call)
+# PS5 stop-aware event wait replaces upstream's polling-independent EmplaceWait.
+producer_original = '    state.queue.EmplaceWait(std::move(command_data), fence, block);'
+producer_new = (
+    '    bool pushed = false;\n'
+    '    if (!stop_source.stop_requested()) {\n'
+    '        pushed = state.queue.TryEmplace(std::move(command_data), fence, block);\n'
+    '        if (!pushed) {\n'
+    '        pushed = state.queue.EmplaceWaitWithStopToken(stop_source.get_token(),\n'
+    '            std::move(command_data), fence, block);\n'
+    '        }\n'
+    '    }\n'
+    '    if (!pushed)\n'
+    '        return state.signaled_fence.load(std::memory_order_relaxed);'
+)
+producer_profiled = producer_new.replace(
+    '        pushed = state.queue.EmplaceWaitWithStopToken(stop_source.get_token(),\n'
+    '            std::move(command_data), fence, block);',
+    '        { ::Eden::Performance::DiagnosticTimer full_timer('
+    '::Eden::Performance::gpu_queue_full);\n'
+    '        pushed = state.queue.EmplaceWaitWithStopToken(stop_source.get_token(),\n'
+    '            std::move(command_data), fence, block);\n'
+    '        }')
+expected = producer_profiled if development else producer_new
+assert untraced.count(expected) == 1
+untraced = untraced.replace(expected, producer_original)
 loading_wait = """            if (Eden::LoadingTick(renderer, false)) {
                 if (!state.queue.TryPop(next)) {
                     Eden::LoadingTick(renderer, true);
