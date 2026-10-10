@@ -400,6 +400,9 @@ static void PrepareStorageLayout() {
 extern "C" bool eden_native_detailed_logging() noexcept {
     return Eden::NativeLogs::Detailed();
 }
+extern "C" unsigned eden_native_logging_generation() noexcept {
+    return Eden::NativeLogs::Generation();
+}
 
 int main(int argc, char** argv) {
     try {
