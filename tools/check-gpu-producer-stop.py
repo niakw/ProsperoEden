@@ -8,6 +8,8 @@ worker=(cache/'native-local/headless/gpu_thread.cpp').read_text()
 start=worker.index('u64 ThreadManager::PushCommand(')
 body=worker[start:worker.index('\n} // namespace',start)]
 assert 'state.queue.EmplaceWait(' not in body
+assert 'state.queue.EmplaceWaitWithStopToken(' in body
+assert 'std::this_thread::sleep_for(std::chrono::microseconds(100))' not in body
 main=(root/'headless/main.cpp').read_text()
 assert 'system.Pause();' not in main
 code=r'''
@@ -55,6 +57,10 @@ int main() {
 '''
 with tempfile.TemporaryDirectory() as tmp:
  p=Path(tmp)/'check.cpp';p.write_text(code);exe=Path(tmp)/'check'
- subprocess.run(['c++','-std=c++20','-pthread','-fsanitize=address,undefined','-I'+str(cache/'source/src'),str(p),'-o',str(exe)],check=True)
+ # Native generated queue header adds the cancellable producer method;
+ # the plain pinned upstream header intentionally does not have that method.
+ subprocess.run(['c++','-std=c++20','-pthread','-fsanitize=address,undefined',
+                 '-I'+str(cache/'native-local/headless/include'),
+                 '-I'+str(cache/'source/src'),str(p),'-o',str(exe)],check=True)
  subprocess.run([str(exe)],check=True,timeout=10)
 print('GPU producer cancellation: PASS full queue, ordered contents, stopped enqueue and fence wait')
