@@ -89,8 +89,7 @@ inline void Loop() {
             const auto observation = game_probe.Observe(counters, wall_second);
             if (observation.suspected) {
                 Crash::gpu_stall_suspicions.fetch_add(1, std::memory_order_relaxed);
-                if (!Performance::detailed_gpu_profile.load(std::memory_order_relaxed))
-                    continue;  // only the fatal crash report may persist it.
+                if (Performance::detailed_gpu_profile.load(std::memory_order_relaxed)) {
                 char line[340];
                 std::snprintf(line, sizeof(line),
                     "EDEN_GAME_GPU_STALL_SUSPECT idle_s=%llu dispatch=%llu draws=%llu "
@@ -108,6 +107,7 @@ inline void Loop() {
                     unsigned(Performance::cpu_state[2].phase.load(std::memory_order_relaxed)),
                     unsigned(Performance::cpu_state[3].phase.load(std::memory_order_relaxed)));
                 Print(line);
+                }
             }
         } else {
             previous_game_active = false;
