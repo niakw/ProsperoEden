@@ -5,6 +5,7 @@
 // pipe; a background thread copies the pipe into the log file, so printing only waits for the
 // pipe. Data still in the pipe when the process is killed is lost (milliseconds' worth).
 #pragma once
+#include <atomic>
 #include <cerrno>
 #include <cstdio>
 #include <fcntl.h>
@@ -27,7 +28,7 @@ public:
     // If the second segment fills too, it is recycled so disk use stays bounded while the earliest
     // context and the latest messages are both retained.
     bool Attach(std::FILE* target, std::string path, std::string first_path,
-                std::size_t segment_limit = 8u * 1024u * 1024u) {
+                std::size_t segment_limit = 8u * 1024u * 1024u, bool initially_enabled = true) {
         if (stream) return false;
         std::fflush(target);
         const int stream_fd = fileno(target);
@@ -55,6 +56,7 @@ public:
         limit = segment_limit;
         bytes = 0;
         rotated = false;
+        enabled = initially_enabled;
         try {
             worker = std::thread([this] { Drain(); });
         } catch (...) {
@@ -69,6 +71,32 @@ public:
             log_path.clear();
             first_log_path.clear();
             return false;
+        }
+        return true;
+    }
+
+    // Called from the launcher when Detailed Logging changes. The async reader
+    // remains alive to prevent a pipe writer from blocking during gameplay.
+    // In quiet mode its backing descriptor is /dev/null: no persistent files.
+    bool SetEnabled(bool want_enabled) {
+        if (!stream) return false;
+        std::fflush(stream);
+        std::scoped_lock lock{file_mutex};
+        if (enabled == want_enabled) return true;
+        const int next = want_enabled ?
+            open(log_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666) :
+            open("/dev/null", O_WRONLY);
+        if (next < 0) return false;
+        close(file_fd);
+        file_fd = next;
+        enabled = want_enabled;
+        rotated = false;
+        bytes = 0;
+        if (!want_enabled) {
+            (void)std::remove(log_path.c_str());
+            (void)std::remove(first_log_path.c_str());
+        } else {
+            (void)std::remove(first_log_path.c_str());
         }
         return true;
     }
@@ -136,6 +164,7 @@ private:
                 return;
             }
             std::scoped_lock lock{file_mutex};
+            if (!enabled) continue;
             if (limit && bytes + static_cast<std::size_t>(count) > limit && !Rotate()) {
                 // Do not fill the console disk on a transient filesystem error.
                 // Keep draining the pipe (avoiding producer stalls) and retry on
@@ -162,5 +191,24 @@ private:
     std::size_t limit = 0;
     std::size_t bytes = 0;
     bool rotated = false;
+    bool enabled = true;
 };
+
+// The menu owns the two pipes for the entire process. Preferences may change
+// while the launcher runs; no persistent traces are generated while disabled.
+namespace NativeLogs {
+inline std::atomic<bool> detailed{false};
+inline LogPipe* error_pipe = nullptr;
+inline LogPipe* output_pipe = nullptr;
+inline bool Detailed() noexcept { return detailed.load(std::memory_order_relaxed); }
+inline void Register(LogPipe* err, LogPipe* out) noexcept {
+    error_pipe = err;
+    output_pipe = out;
+}
+inline void SetDetailed(bool value) noexcept {
+    detailed.store(value, std::memory_order_relaxed);
+    if (error_pipe) (void)error_pipe->SetEnabled(value);
+    if (output_pipe) (void)output_pipe->SetEnabled(value);
+}
+} // namespace NativeLogs
 }
