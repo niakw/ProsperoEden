@@ -31,6 +31,9 @@ assert 'Eden::BootTrace::Ready(Eden::LogsDir(), Eden::FilesystemAccess());' in m
 assert main.index('const Eden::Crash::Last last_crash =') < main.index('if (!persist_detailed_logs) {')
 assert main.index('Eden::Crash::Install(') < main.index('Eden::BootTrace::Quiet(Eden::LogsDir());')
 assert 'std::remove(Eden::LogFile(name).c_str());' in main
+assert '"result.tsv", "boot-trace.txt"' in main
+assert '''if (persist_detailed_logs) {
+            report = std::fopen(Eden::LogFile("result.tsv").c_str(), "w");''' in main
 assert 'std::remove((Eden::UserDir() + "/log/" + name).c_str());' in main
 
 assert 'Eden::NativeLogs::SetDetailed(value.detailed_logging);' in service
