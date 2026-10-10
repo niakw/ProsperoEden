@@ -1967,6 +1967,20 @@ if(EDEN_PS5_OPENGL)
         string(REPLACE "    std::jthread thread;"
             "    void RunWorker(VideoCore::RendererBase&, Core::Frontend::GraphicsContext&, Tegra::Control::Scheduler&);\n    pthread_t thread{};\n    std::stop_source stop_source;\n    bool thread_joinable{};" gpu_thread_header "${gpu_thread_header}")
         file(READ "${PROJECT_SOURCE_DIR}/src/video_core/gpu_thread.cpp" gpu_worker)
+        # A lock-free crash breadcrumb, not a per-command DEV metric. The GPU
+        # owner publishes once per 64 completed commands. No filesystem work.
+        set(gpu_done "            state.signaled_fence.store(next.fence);")
+        string(FIND "${gpu_worker}" "${gpu_done}" gpu_done_at)
+        if(gpu_done_at LESS 0)
+            message(FATAL_ERROR "Pinned GPU worker completed-fence marker changed")
+        endif()
+        string(REPLACE "${gpu_done}"
+            "${gpu_done}\n            if ((++completed_gpu_commands & 63u) == 0u)\n                ::Eden::Crash::gpu_completed_commands.fetch_add(64, std::memory_order_relaxed);"
+            gpu_worker "${gpu_worker}")
+        string(REPLACE "        CommandDataContainer next;"
+            "        unsigned completed_gpu_commands = 0;\n        CommandDataContainer next;"
+            gpu_worker "${gpu_worker}")
+        string(PREPEND gpu_worker "#include \"${EDEN_PORT_DIR}/crash_report.h\"\n")
         set(worker_start "void ThreadManager::StartThread(VideoCore::RendererBase& renderer, Core::Frontend::GraphicsContext& context, Tegra::Control::Scheduler& scheduler) {\n    rasterizer = renderer.ReadRasterizer();\n    thread = std::jthread([&](std::stop_token stop_token) {")
         string(FIND "${gpu_worker}" "${worker_start}" worker_start_offset)
         if(worker_start_offset LESS 0)
