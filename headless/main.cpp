@@ -905,16 +905,16 @@ int main(int argc, char** argv) {
         // destroyed VkDevice. Reset even when the dev probe is off now.
         Eden::DevVulkan::ResetForTitle();  // all developer Vulkan A/B switches
         Eden::DevVulkan::gpu_time_session.fetch_add(1, std::memory_order_release);
-        Eden::Performance::vulkan_cost_enabled = std::filesystem::exists(Eden::AppFile("cost-run.txt"));
+        Eden::Performance::vulkan_cost_enabled = launch_preferences.detailed_logging &&
+            std::filesystem::exists(Eden::AppFile("cost-run.txt"));
         const bool performance_run = std::filesystem::exists(Eden::AppFile("performance-run.txt"));
 #ifdef EDEN_DEV_PROFILE
         // R291: the full profiling snapshot scans HLE tables, captures guest
         // CPU state and writes many lines on the compositor/GPU thread.
         // Quiet gameplay must not do that work just because this is a DEV PKG.
-        // frame-profile.txt opts in without enabling verbose RADV driver logs.
-        const bool deep_frame_profile = !performance_run &&
-            (launch_preferences.detailed_logging ||
-             std::filesystem::exists(Eden::AppFile("frame-profile.txt")));
+        // The user setting is authoritative: development sentinel files
+        // cannot re-enable deep captures while Detailed Logging is OFF.
+        const bool deep_frame_profile = !performance_run && launch_preferences.detailed_logging;
         Eden::Performance::detailed_gpu_profile.store(deep_frame_profile, std::memory_order_relaxed);
         Eden::Performance::texture_budget_log.store(deep_frame_profile, std::memory_order_relaxed);
         Eden::Performance::capture_passes.store(0, std::memory_order_relaxed);
@@ -923,7 +923,8 @@ int main(int argc, char** argv) {
                     deep_frame_profile ? "diagnostic" : "quiet");
         // Optional 20 Hz GPU-thread PC samples. The handler must exist before the
         // GPU thread registers, which unblocks SIGUSR2 only while sampling is on.
-        const bool pc_sample_run = std::filesystem::exists(Eden::AppFile("pc-sample.txt"));
+        const bool pc_sample_run = launch_preferences.detailed_logging &&
+            std::filesystem::exists(Eden::AppFile("pc-sample.txt"));
         static bool pc_sampler_installed = false;
         if (pc_sample_run && !pc_sampler_installed) {
             Eden::Performance::BeginPcSampling();
@@ -936,7 +937,8 @@ int main(int argc, char** argv) {
         const bool quiet_driver = performance_run || !launch_preferences.detailed_logging;
         setenv("PS5VK_QUIET_LOG", quiet_driver ? "1" : "0", 1);
         // Bounded development cost breakdowns; never enable per-draw tracing.
-        setenv("PS5VK_COST_LOG", std::filesystem::exists(Eden::AppFile("cost-run.txt")) ? "1" : "0", 1);
+        setenv("PS5VK_COST_LOG", (launch_preferences.detailed_logging &&
+            std::filesystem::exists(Eden::AppFile("cost-run.txt"))) ? "1" : "0", 1);
         if (performance_run) unsetenv("PS5VK_CAPTURE_SCANOUT");
         else setenv("PS5VK_CAPTURE_SCANOUT", "1", 1);
         std::printf("EDEN_VULKAN_MEASUREMENT quiet=%d captures=%d\n",
