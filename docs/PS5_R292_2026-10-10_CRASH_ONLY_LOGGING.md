@@ -61,3 +61,6 @@ and crash-handler source independence, as well as the existing bounded-pipe
 unit test. The native builder must additionally apply the **new** pinned
 backport successfully to the real Eden source. Only a PS5 PKG tested on
 firmware 13.60 can confirm native filesystem/device behavior.
+
+The reproducible source-only check is gated in the core GitHub preflight,
+not a certification that firmware-native filesystem and PS5 FPS have passed.
