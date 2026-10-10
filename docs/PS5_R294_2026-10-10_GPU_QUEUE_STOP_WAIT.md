@@ -67,3 +67,15 @@ notifies its producer's condition variable on every pop.
   successor batching remain disabled pending separate qualified work.
 - R293's prior native build on commit `767c043d` passed, but **does not
   contain R294**. Compile from the exact R294 commit before any device test.
+
+## Diagnostic-only lock wait refinement
+
+The old `cache_lock_contended` counter counts failed guest-side cache-lock
+acquisitions. It is **not** a duration. With Detailed Logging enabled, R294
+now also samples the time spent in the actual blocking `mutex.lock()` call
+and reports `cache_lock_wait_ns` (cumulative) and `cache_wait_ms` (the
+five-second delta). This distinguishes frequent but cheap contention from
+expensive CPU/renderer serialization. The measurement deliberately excludes
+optional try-lock spinning and cannot by itself prove GPU hardware occupancy.
+With Detailed Logging OFF the mutex uses the original direct lock and never
+samples a clock or updates the diagnostic wait counter.
