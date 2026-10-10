@@ -33,6 +33,7 @@ jobs:
           python3 -B tools/check-ps5-log-analysis.py
           python3 -B tools/check-ps5-frame-window-analysis.py
           python3 -B tools/check-ps5-quiet-frame-pressure.py
+          python3 -B tools/check-ps5-quiet-gpu-hotpaths.py
           python3 -B tools/check-ps5-crash-only-logging.py
           python3 -B tools/check-log-pipe-unit.py
           python3 -B tools/check-performance-policy.py
