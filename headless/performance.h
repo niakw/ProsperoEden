@@ -90,6 +90,7 @@ inline Totals guest_cpu_write, guest_cpu_read;
 // but remains a development-only experiment until it is requalified against PS5 soft hangs.
 // dev-settings cache_spin=N can still opt into bounded try_lock retries for profiling.
 inline std::atomic<unsigned> cache_lock_spins{0};
+inline std::atomic<bool> detailed_gpu_profile{false};
 inline std::atomic<unsigned long long> cache_lock_contended{0}, cache_lock_blocked{0};
 template <typename Mutex>
 inline void GuestCacheLock(Mutex& mutex) {
@@ -138,7 +139,7 @@ inline std::atomic<bool> texture_budget_log{false};
 // Native DEV: expensive GPU-thread/HLE/CPU-snapshot reporting is opt-in.
 // The lightweight frame-pacing counters still run in quiet gameplay.
 // Reset per title, rather than inheriting a prior game's diagnostic session.
-inline std::atomic<bool> detailed_gpu_profile{false};
+
 // "Is memory short?", installed by the PS5 build (performance.cpp, GraphicsMemoryShort). This
 // header is compiled into libraries with and without PS5_NATIVE, so the function below must read
 // the same in all of them: the platform part is behind this pointer, not behind an #ifdef.
