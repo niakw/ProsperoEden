@@ -1985,23 +1985,14 @@ if(EDEN_PS5_OPENGL)
         # which the consumer signals after popping. On Stop, the stop_token
         # wakes the waiter even when the GPU consumer is permanently blocked.
         # A cheap TryEmplace keeps the uncontended fast path lock-free.
-        set(producer_wait "        pushed = state.queue.EmplaceWaitWithStopToken(stop_source.get_token(),\n"
-                          "            std::move(command_data), fence, block);")
+        set(producer_wait "        pushed = state.queue.EmplaceWaitWithStopToken(stop_source.get_token(),\n            std::move(command_data), fence, block);")
         string(FIND "${gpu_worker}" "    state.queue.EmplaceWait(std::move(command_data), fence, block);" old_producer_at)
         if(old_producer_at LESS 0)
             message(FATAL_ERROR "Pinned GPU producer source changed")
         endif()
+        set(producer_rewrite "    bool pushed = false;\n    if (!stop_source.stop_requested()) {\n        pushed = state.queue.TryEmplace(std::move(command_data), fence, block);\n        if (!pushed) {\n${producer_wait}\n        }\n    }\n    if (!pushed)\n        return state.signaled_fence.load(std::memory_order_relaxed);")
         string(REPLACE "    state.queue.EmplaceWait(std::move(command_data), fence, block);"
-            "    bool pushed = false;\n"
-            "    if (!stop_source.stop_requested()) {\n"
-            "        pushed = state.queue.TryEmplace(std::move(command_data), fence, block);\n"
-            "        if (!pushed) {\n"
-            "${producer_wait}\n"
-            "        }\n"
-            "    }\n"
-            "    if (!pushed)\n"
-            "        return state.signaled_fence.load(std::memory_order_relaxed);"
-            gpu_worker "${gpu_worker}")
+            "${producer_rewrite}" gpu_worker "${gpu_worker}")
         file(READ "${EDEN_PORT_DIR}/native_gpu_thread.inc" native_gpu_lifecycle)
         string(REPLACE "#include \"diagnostics.h\"" "#include \"${EDEN_PORT_DIR}/diagnostics.h\""
             native_gpu_lifecycle "${native_gpu_lifecycle}")
