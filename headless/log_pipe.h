@@ -198,6 +198,8 @@ private:
 // while the launcher runs; no persistent traces are generated while disabled.
 namespace NativeLogs {
 inline std::atomic<bool> detailed{false};
+inline std::atomic<unsigned> generation{0};
+inline unsigned Generation() noexcept { return generation.load(std::memory_order_relaxed); }
 inline LogPipe* error_pipe = nullptr;
 inline LogPipe* output_pipe = nullptr;
 inline bool Detailed() noexcept { return detailed.load(std::memory_order_relaxed); }
