@@ -16,7 +16,7 @@ pipe = read("headless/log_pipe.h")
 main = read("headless/main.cpp")
 boot = read("headless/boot_trace.h")
 service = read("headless/prosperoeden/eden_services.cpp")
-patch = read("headless/backports/eden-ps5-bounded-logging.patch")
+patch = read("headless/backports/eden-ps5-crash-only-logging.patch")
 crash = read("headless/crash_report.cpp")
 
 # All three routine sources (stdio, early trace, upstream Eden logging) must
@@ -51,6 +51,8 @@ assert 'eden_native_logging_generation()' in patch
 assert 'if (file && eden_native_detailed_logging()) file->Flush();' in patch
 assert 'void FmtLogMessageImpl(' in patch
 assert 'extern "C" bool eden_native_detailed_logging() noexcept {' in main
+assert 'eden-ps5-crash-only-logging.patch' in read("tools/apply-eden-backports.sh")
+assert '.encore-backport-ps5-crash-only-logging.sha256' in read("tools/apply-eden-backports.sh")
 
 # The fatal path is separately installed, not dependent on FILE stdout/stderr
 # or the patched upstream log backend; normal crash reports are still retained.
