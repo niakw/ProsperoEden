@@ -1992,6 +1992,28 @@ if(EDEN_PS5_OPENGL)
             string(REPLACE "${dispatch_call}"
                 "                { ::Eden::Performance::DiagnosticTimer dispatch_timer(::Eden::Performance::gpu_dispatch);\n${dispatch_call}\n                }"
                 gpu_worker "${gpu_worker}")
+            # Distinguish a genuinely slow submit from a command-level
+            # TickWork/FlushRegion/InvalidateRegion stall. This source rewrite
+            # touches timing only; command order, fences, and queue depth stay.
+            foreach(entry IN ITEMS tick flush invalidate)
+                if(entry STREQUAL "tick")
+                    set(gpu_call "                system.GPU().TickWork();")
+                    set(metric "gpu_command_tick")
+                elseif(entry STREQUAL "flush")
+                    set(gpu_call "                renderer.ReadRasterizer()->FlushRegion(flush->addr, flush->size);")
+                    set(metric "gpu_command_flush")
+                else()
+                    set(gpu_call "                renderer.ReadRasterizer()->OnCacheInvalidation(invalidate->addr, invalidate->size);")
+                    set(metric "gpu_command_invalidate")
+                endif()
+                string(FIND "${gpu_worker}" "${gpu_call}" gpu_call_at)
+                if(gpu_call_at LESS 0)
+                    message(FATAL_ERROR "Pinned GPU worker ${entry} dispatch changed")
+                endif()
+                string(REPLACE "${gpu_call}"
+                    "                { ::Eden::Performance::DiagnosticTimer category_timer(::Eden::Performance::${metric});\\n${gpu_call}\\n                }"
+                    gpu_worker "${gpu_worker}")
+            endforeach()
             string(REPLACE "if (count <= 3) LOG_INFO(Render_OpenGL, \"EDEN_GPU_DISPATCH_"
                 "if (count <= 3 || ::Eden::Performance::BootTrace()) LOG_INFO(Render_OpenGL, \"EDEN_GPU_DISPATCH_"
                 gpu_worker "${gpu_worker}")
