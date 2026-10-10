@@ -342,6 +342,11 @@ void Compose(const Kind* kind, int code, std::uint64_t address, const Registers&
     t.Put(sessions[session_now.load(std::memory_order_acquire) & 1]);
     t.Put('\n');
 #ifdef PS5_NATIVE
+    // No periodic log file in quiet mode. Preserve coarse progress inside
+    // the crash report itself, even if the last GPU command never returned.
+    t.Put("gpu completed commands (64-step sample): ");
+    t.Dec(gpu_completed_commands.load(std::memory_order_relaxed));
+    t.Put('\n');
     {
         std::int64_t start = 0;
         std::size_t largest = 0;
