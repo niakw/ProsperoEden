@@ -19,7 +19,10 @@ cmake = read("headless/CMakeLists.txt")
 assert "inline std::atomic<bool> detailed_gpu_profile{false};" in perf
 assert "const bool deep_frame_profile = !performance_run &&" in main
 assert "launch_preferences.detailed_logging ||" in main
-assert 'std::filesystem::exists(Eden::AppFile("frame-profile.txt"))' in main
+assert "const bool deep_frame_profile = !performance_run && launch_preferences.detailed_logging;" in main
+assert 'std::filesystem::exists(Eden::AppFile("frame-profile.txt"))' not in main
+assert "Eden::NativeLogs::Detailed()" in graphics
+assert 'if (Eden::NativeLogs::Detailed()) {\n                // The game' in graphics
 assert "detailed_gpu_profile.store(deep_frame_profile, std::memory_order_relaxed);" in main
 assert "texture_budget_log.store(deep_frame_profile, std::memory_order_relaxed);" in main
 assert "capture_passes.store(0, std::memory_order_relaxed);" in main
