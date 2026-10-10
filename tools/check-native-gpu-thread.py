@@ -78,6 +78,17 @@ loading_wait = """            if (Eden::LoadingTick(renderer, false)) {
             }"""
 assert untraced.count(loading_wait) == 1
 untraced = untraced.replace(loading_wait, '            state.queue.PopWait(next, stop_token);')
+# The native crash-only breadcrumb is coarse (one relaxed atomic per 64
+# completed GPU commands); strip it solely for the upstream-body comparison.
+progress_marker = (
+    '            state.signaled_fence.store(next.fence);\n'
+    '            if ((++completed_gpu_commands & 63u) == 0u)\n'
+    '                ::Eden::Crash::gpu_completed_commands.fetch_add(64, std::memory_order_relaxed);'
+)
+assert untraced.count(progress_marker) == 1
+untraced = untraced.replace(progress_marker, '            state.signaled_fence.store(next.fence);')
+assert untraced.count('        unsigned completed_gpu_commands = 0;\n') == 1
+untraced = untraced.replace('        unsigned completed_gpu_commands = 0;\n', '')
 assert body in untraced, 'GPU worker semantics changed beyond dispatch markers and startup animation wait'
 
 assert 'stop_source.get_token()' in worker and 'thread.get_stop_token()' not in worker
