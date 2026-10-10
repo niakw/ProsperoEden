@@ -96,6 +96,9 @@ inline Totals guest_cpu_write, guest_cpu_read;
 inline std::atomic<unsigned> cache_lock_spins{0};
 inline std::atomic<bool> detailed_gpu_profile{false};
 inline std::atomic<unsigned long long> cache_lock_contended{0}, cache_lock_blocked{0};
+// Accumulated time actually blocked on the guest cache mutex, not just
+// number of failed try_lock attempts. Updated ONLY during detailed profiling.
+inline std::atomic<unsigned long long> cache_lock_wait_ns{0};
 template <typename Mutex>
 inline void GuestCacheLock(Mutex& mutex) {
     // Source of thousands of contended-cache atomic writes in FC27. When
@@ -113,7 +116,12 @@ inline void GuestCacheLock(Mutex& mutex) {
         if (mutex.try_lock()) return;
     }
     cache_lock_blocked.fetch_add(1, std::memory_order_relaxed);
+    const auto blocked_start = Common::g_wall_clock.GetTimeNS();
     mutex.lock();
+    const auto waited = (Common::g_wall_clock.GetTimeNS() - blocked_start).count();
+    if (waited > 0)
+        cache_lock_wait_ns.fetch_add(static_cast<unsigned long long>(waited),
+                                     std::memory_order_relaxed);
 }
 // Guest waits: nvhost_ctrl syncpoint event registration -> signal, and
 // BufferQueueProducer::DequeueBuffer waiting for a free buffer slot.
