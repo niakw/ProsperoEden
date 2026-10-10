@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "performance.h"
+#include "log_pipe.h"
 #include "assets_dir.h"
 #include <glad/glad.h>
 #include <EGL/egl.h>
@@ -292,7 +293,8 @@ public:
         prior_frame = now;
         ++sample_frames;
         if (now - sample_start >= 5.0) {
-            Eden::Performance::SampleGpuFrame(presented_frames);
+            if (Eden::NativeLogs::Detailed()) {
+                Eden::Performance::SampleGpuFrame(presented_frames);
             std::printf("EDEN_DEV_DRAW calls=%llu ns=%llu\n",
                         Eden::Performance::rasterizer_draw.calls.load(),
                         Eden::Performance::rasterizer_draw.nanoseconds.load());
@@ -302,7 +304,8 @@ public:
             std::printf("EDEN_DEV_FRAME frames=%u seconds=%.6f fps=%.3f worst_ms=%.3f total=%u\n",
                         sample_frames, now - sample_start, sample_frames / (now - sample_start),
                         worst_frame * 1000.0, presented_frames);
-            std::fflush(stdout);
+                std::fflush(stdout);
+            }
             sample_start = now;
             sample_frames = 0;
             worst_frame = 0;
@@ -316,11 +319,13 @@ public:
             sample_worst = std::max(sample_worst, now - prior_sample_frame);
             prior_sample_frame = now;
             if (now - sample_start >= 5.0) {
-                std::printf("EDEN_GAME_FRAME frames=%u seconds=%.6f fps=%.3f worst_ms=%.3f total=%u\n",
+                if (Eden::NativeLogs::Detailed()) {
+                    std::printf("EDEN_GAME_FRAME frames=%u seconds=%.6f fps=%.3f worst_ms=%.3f total=%u\n",
                             sample_frames, now - sample_start,
                             sample_frames / (now - sample_start), sample_worst * 1000.0,
                             presented_frames);
-                std::fflush(stdout);
+                    std::fflush(stdout);
+                }
                 sample_start = now;
                 sample_frames = 0;
                 sample_worst = 0;
@@ -697,6 +702,9 @@ void GraphicsWindow::OnFrameDisplayed() {
 #endif
             frame_sample_last = now;
             if (now - frame_sample_start >= 5.0) {
+                // Quiet gameplay still counts late intervals but never formats
+                // per-window diagnostic lines or flushes the log pipe.
+                if (Eden::NativeLogs::Detailed()) {
                 // The game's frames; the ones a slower display did not show are counted apart.
                 std::printf("EDEN_VULKAN_FRAME frames=%u seconds=%.6f fps=%.3f worst_ms=%.3f total=%u "
                             "not_shown=%u clock_hz=%.1f late38=%u late50=%u late100=%u late200=%u late500=%u slow_streak=%u\n",
@@ -755,6 +763,15 @@ void GraphicsWindow::OnFrameDisplayed() {
                     Eden::Performance::ReportGpuThread(frame_total);
 #endif
                 std::fflush(stdout);
+                } else {
+                    // These baselines must not span a quiet session and later
+                    // explode into false five-second deltas if re-enabled.
+                    frame_pressure_previous = CaptureFramePressure();
+                    experimental_pacing_bins = {};
+#ifdef EDEN_DEV_PROFILE
+                    interval_hist = {};
+#endif
+                }
                 frame_sample_start = now;
                 frame_sample_count = 0;
                 frame_sample_worst = 0;
