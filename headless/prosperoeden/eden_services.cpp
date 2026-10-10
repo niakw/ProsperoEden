@@ -3,6 +3,10 @@
 
 #include "assets_dir.h"
 #include "crash_report.h"
+#ifdef PS5_NATIVE
+#include "boot_trace.h"
+#include "log_pipe.h"
+#endif
 #include "diagnostics.h"
 #include "encore_overrides_runtime.h"
 #include "metadata_bridge.h"
@@ -1338,6 +1342,19 @@ bool EdenServices::set_preferences(const pe::ui::Preferences& preferences) {
     value.reduce_motion = preferences.reduce_motion;
     const bool saved = Eden::SavePreferences(value);
     if (!saved) Eden::Report("settings", "Could not write preferences");
+#ifdef PS5_NATIVE
+    if (saved) {
+        // Apply the toggle immediately in the launcher: no hidden running
+        // stderr/stdout writers and no growing emulator log when disabled.
+        Eden::NativeLogs::SetDetailed(value.detailed_logging);
+        if (!value.detailed_logging) {
+            Eden::BootTrace::Quiet(Eden::LogsDir());
+            for (const char* name : {
+                    "eden_log.txt", "eden_log.txt.first.txt", "eden_log.txt.old.txt"})
+                (void)std::remove((Eden::UserDir() + "/log/" + name).c_str());
+        }
+    }
+#endif
     return saved;
 }
 
