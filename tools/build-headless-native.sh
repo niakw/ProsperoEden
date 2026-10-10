@@ -139,6 +139,13 @@ python3 -B "$root/tools/check-python-source-syntax.py"
 # compiler check. The explicit prebuild bypass still disables it.
 if [[ "$graphics" == ON && ${EDEN_SKIP_PREBUILD_SOURCE_CHECKS:-0} != 1 ]]; then
     python3 -B "$root/tools/check-native-source-syntax.py" "$scratch/native-local"
+    if [[ ${EDEN_DEV_PROFILE:-OFF} == ON ]]; then
+        # The all-on development PKG skips only release-shaped assertions:
+        # it must still exercise the real generated GPU worker and stop-aware
+        # SPSC queue before committing to a full native SDK compilation.
+        python3 -B "$root/tools/check-native-gpu-thread.py"
+        python3 -B "$root/tools/check-gpu-producer-stop.py"
+    fi
 fi
 
 # Run every source/harness check that only needs the configured/generated source tree BEFORE the
