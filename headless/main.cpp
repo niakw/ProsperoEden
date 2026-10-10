@@ -867,7 +867,19 @@ int main(int argc, char** argv) {
         Eden::Performance::vulkan_cost_enabled = std::filesystem::exists(Eden::AppFile("cost-run.txt"));
         const bool performance_run = std::filesystem::exists(Eden::AppFile("performance-run.txt"));
 #ifdef EDEN_DEV_PROFILE
-        Eden::Performance::texture_budget_log = true;  // EDEN_VULKAN_TEXTURE_BUDGET every 300 frames
+        // R291: the full profiling snapshot scans HLE tables, captures guest
+        // CPU state and writes many lines on the compositor/GPU thread.
+        // Quiet gameplay must not do that work just because this is a DEV PKG.
+        // frame-profile.txt opts in without enabling verbose RADV driver logs.
+        const bool deep_frame_profile = !performance_run &&
+            (launch_preferences.detailed_logging ||
+             std::filesystem::exists(Eden::AppFile("frame-profile.txt")));
+        Eden::Performance::detailed_gpu_profile.store(deep_frame_profile, std::memory_order_relaxed);
+        Eden::Performance::texture_budget_log.store(deep_frame_profile, std::memory_order_relaxed);
+        Eden::Performance::capture_passes.store(0, std::memory_order_relaxed);
+        std::printf("EDEN_FRAME_PROFILE detailed=%u mode=%s\n",
+                    unsigned(deep_frame_profile), performance_run ? "performance_run" :
+                    deep_frame_profile ? "diagnostic" : "quiet");
         // Optional 20 Hz GPU-thread PC samples. The handler must exist before the
         // GPU thread registers, which unblocks SIGUSR2 only while sampling is on.
         const bool pc_sample_run = std::filesystem::exists(Eden::AppFile("pc-sample.txt"));
