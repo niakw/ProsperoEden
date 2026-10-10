@@ -39,7 +39,8 @@ assert 'DiagnosticTimer category_timer(::Eden::Performance::${metric});' in cmak
 assert 'if(gpu_call_at LESS 0)' in cmake
 # No diagnostic timer may alter queue depth, the restart/stop semantics,
 # Vulkan profile choices or GPU emulation results.
-assert 'std::this_thread::sleep_for(std::chrono::microseconds(100));' in cmake
+assert 'std::this_thread::sleep_for(std::chrono::microseconds(100));' not in cmake
+assert 'EmplaceWaitWithStopToken(stop_source.get_token()' in cmake
 # We have not changed the tested native queue algorithm or guest/cache locking order.
 assert "state.queue.TryEmplace(std::move(command_data), fence, block)" in cmake
 assert "std::lock_guard lock{texture_cache.mutex, std::adopt_lock};" in generator
