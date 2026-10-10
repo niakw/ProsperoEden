@@ -395,6 +395,12 @@ static void PrepareStorageLayout() {
 }
 #endif
 
+// The pinned native Eden logger queries the same live preference as the
+// stdout/stderr sinks. Crash::Install writes its own report regardless.
+extern "C" bool eden_native_detailed_logging() noexcept {
+    return Eden::NativeLogs::Detailed();
+}
+
 int main(int argc, char** argv) {
     try {
 #if defined(EDEN_DEV_PROFILE) && defined(PS5_NATIVE)
@@ -457,6 +463,10 @@ int main(int argc, char** argv) {
         if (Eden::FilesystemAccess()) MigrateLegacyInstallAssets();
         PrepareStorageLayout();
         Eden::BootTrace::Line("persistent storage layout prepared");
+        // Resolve the persisted setting AFTER the storage layout and before opening any
+        // normal runtime log. A crash report is written independently of this toggle.
+        const bool persist_detailed_logs = Eden::LoadPreferences().detailed_logging;
+        Eden::NativeLogs::SetDetailed(persist_detailed_logs);
         // Keep the previous session's logs: a freeze is diagnosed after the app is reopened.
         for (const char* base : {"stderr", "heap"}) {
             const std::string current = Eden::LogFile(std::string{base} + ".log");
@@ -471,6 +481,18 @@ int main(int argc, char** argv) {
         // A crash report the previous run left: that run's logs move beside it, and the launcher
         // says where it is (crash_report.h).
         const Eden::Crash::Last last_crash = Eden::Crash::TakeLast(Eden::LogsDir(), Eden::UserDir() + "/log/eden_log.txt");
+        if (!persist_detailed_logs) {
+            // TakeLast above has already archived any real crash evidence.
+            // Discard leftovers from clean/older runs; never remove crash-*.
+            for (const char* name : {
+                    "stderr.log", "stderr.first.log", "stderr.prev.log", "stderr.prev.first.log",
+                    "heap.log", "heap.first.log", "heap.prev.log", "heap.prev.first.log",
+                    "boot-trace.txt", "boot-trace.prev.txt", "boot-trace.sandbox-prev.txt"})
+                (void)std::remove(Eden::LogFile(name).c_str());
+            for (const char* name : {
+                    "eden_log.txt", "eden_log.txt.first.txt", "eden_log.txt.old.txt"})
+                (void)std::remove((Eden::UserDir() + "/log/" + name).c_str());
+        }
         // Older Eden releases could leave a 100 MiB .old.txt behind. The current
         // first/recent segments are capped separately, but a stale legacy file can
         // survive upgrades and needlessly occupy storage. Give crash collection
@@ -501,8 +523,12 @@ int main(int argc, char** argv) {
         for (const char* name : {"eden_log.txt", "eden_log.txt.old.txt"})
             std::filesystem::remove(std::filesystem::path{Eden::UserDir()} / "log" / name);
 #endif
-        if (!std::freopen(Eden::LogFile("stderr.log").c_str(), "w", stderr) ||
-            !std::freopen(Eden::LogFile("heap.log").c_str(), "w", stdout)) return 2;
+        // Quiet by default: stream to a pipe whose reader discards messages.
+        // Crucially, do not even CREATE the normal log files in this mode.
+        const std::string error_sink = persist_detailed_logs ? Eden::LogFile("stderr.log") : "/dev/null";
+        const std::string output_sink = persist_detailed_logs ? Eden::LogFile("heap.log") : "/dev/null";
+        if (!std::freopen(error_sink.c_str(), "w", stderr) ||
+            !std::freopen(output_sink.c_str(), "w", stdout)) return 2;
         std::setvbuf(stderr, nullptr, _IONBF, 0);
         // Batch SDK success traces; phase receipts still flush explicitly.
         static char stdout_buffer[64 * 1024];
@@ -512,13 +538,21 @@ int main(int argc, char** argv) {
         const std::string stderr_path = Eden::LogFile("stderr.log");
         const std::string heap_path = Eden::LogFile("heap.log");
         static constexpr std::size_t kReleaseLogSegmentBytes = 8u * 1024u * 1024u;
-        if (!stderr_pipe.Attach(stderr, stderr_path, Eden::LogFile("stderr.first.log"),
-                                kReleaseLogSegmentBytes) ||
-            !stdout_pipe.Attach(stdout, heap_path, Eden::LogFile("heap.first.log"),
-                                kReleaseLogSegmentBytes))
-            Eden::Report("logs", "Asynchronous bounded log writing unavailable; writing directly");
+        const bool stderr_attached = stderr_pipe.Attach(
+            stderr, stderr_path, Eden::LogFile("stderr.first.log"),
+            kReleaseLogSegmentBytes, persist_detailed_logs);
+        const bool stdout_attached = stdout_pipe.Attach(
+            stdout, heap_path, Eden::LogFile("heap.first.log"),
+            kReleaseLogSegmentBytes, persist_detailed_logs);
+        Eden::NativeLogs::Register(stderr_attached ? &stderr_pipe : nullptr,
+                                   stdout_attached ? &stdout_pipe : nullptr);
+        if (!stderr_attached || !stdout_attached)
+            Eden::Report("logs", "Asynchronous log sink unavailable; crash reports remain active");
         Eden::Crash::Install(Eden::LogsDir(), Eden::kAppVersion, last_crash.restarted);
-        Eden::BootTrace::Ready(Eden::LogsDir(), Eden::FilesystemAccess());
+        if (persist_detailed_logs)
+            Eden::BootTrace::Ready(Eden::LogsDir(), Eden::FilesystemAccess());
+        else
+            Eden::BootTrace::Quiet(Eden::LogsDir());
         Eden::BootTrace::Line("logs ready; app=%s data=%s", Eden::AppDir().c_str(), Eden::UserDir().c_str());
         // Host-side HTTPS (Nlib, remote override manifests) uses BSD sockets and the
         // Payload SDK resolver. Native titles must initialise libSceNet before those calls.
