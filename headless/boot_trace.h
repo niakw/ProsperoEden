@@ -25,6 +25,10 @@ inline int& File() {
     static int fd = -1;
     return fd;
 }
+inline bool& QuietMode() {
+    static bool muted = false;
+    return muted;
+}
 inline timespec& Start() {
     static timespec value = [] {
         timespec now{};
@@ -70,6 +74,7 @@ inline void OnFatal(int signal, siginfo_t* info, void*) {
 } // namespace detail
 
 inline void Line(const char* format, ...) {
+    if (detail::QuietMode()) return;
     char body[700];
     va_list args;
     va_start(args, format);
@@ -109,6 +114,23 @@ inline void Begin(const char* version, const char* build) {
          version, build, known ? "" : "unknown ", sdk, static_cast<int>(getpid()),
          static_cast<int>(getuid()), static_cast<int>(geteuid()),
          static_cast<int>(getgid()), static_cast<int>(getegid()), detail::File());
+}
+
+// The startup bootstrap can write a trace before preferences are readable.
+// Once crash handling is installed, quiet sessions do not retain those files.
+// Fatal events still use the independent Crash::WriteReport path.
+inline void Quiet(const std::string& logs_dir) {
+    detail::QuietMode() = true;
+    if (detail::File() >= 0) {
+        close(detail::File());
+        detail::File() = -1;
+    }
+    detail::Memory().clear();
+    (void)std::remove("/download0/boot-trace.txt");
+    (void)std::remove("/download0/boot-trace.prev.txt");
+    for (const char* name : {"/boot-trace.txt", "/boot-trace.prev.txt",
+                              "/boot-trace.sandbox-prev.txt"})
+        (void)std::remove((logs_dir + name).c_str());
 }
 
 inline void Ready(const std::string& logs_dir, bool full_filesystem) {
