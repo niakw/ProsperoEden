@@ -1939,6 +1939,22 @@ if(EDEN_PS5_OPENGL)
         list(REMOVE_ITEM video_sources macro.cpp)
         list(APPEND video_sources "${MACRO_OUTPUT}")
     endif()
+    # PS5-only stop-aware producer wait; the pinned upstream queue has a
+    # condition variable for free slots, but no stop-token overload.
+    # Keep the plain host and other consumers on upstream's original queue.
+    if(PS5_NATIVE)
+        file(READ "${PROJECT_SOURCE_DIR}/src/common/bounded_threadsafe_queue.h" native_queue_header)
+        set(queue_wait_anchor "    template <typename... Args>\n    void EmplaceWait(Args&&... args) noexcept {\n        Emplace<PushMode::Wait>(std::forward<Args>(args)...);\n    }")
+        string(FIND "${native_queue_header}" "${queue_wait_anchor}" queue_wait_offset)
+        if(queue_wait_offset LESS 0)
+            message(FATAL_ERROR "Pinned SPSC queue EmplaceWait contract changed")
+        endif()
+        file(READ "${EDEN_PORT_DIR}/gpu_queue_stop_wait.inc" native_stop_wait)
+        string(REPLACE "${queue_wait_anchor}" "${queue_wait_anchor}\n${native_stop_wait}"
+            native_queue_header "${native_queue_header}")
+        string(PREPEND native_queue_header "#include <memory>\n#include <stop_token>\n")
+        write_derived("${PORT_BUILD_DIR}/include/common/bounded_threadsafe_queue.h" "${native_queue_header}")
+    endif()
     file(READ "${PROJECT_SOURCE_DIR}/src/video_core/gpu_thread.h" gpu_thread_header)
     string(REPLACE "using CommandQueue = Common::SPSCQueue<CommandDataContainer>;"
         "using CommandQueue = Common::SPSCQueue<CommandDataContainer, 8>;"
@@ -1965,9 +1981,26 @@ if(EDEN_PS5_OPENGL)
         set(dispatch_call "                scheduler.Push(system.GPU(), submit_list->channel, std::move(submit_list->entries));")
         string(REPLACE "${dispatch_call}"
             "                const auto count = ++dispatches;\n                if (count <= 3) LOG_INFO(Render_OpenGL, \"EDEN_GPU_DISPATCH_BEGIN count={}\", count);\n${dispatch_call}\n                if (count <= 3) LOG_INFO(Render_OpenGL, \"EDEN_GPU_DISPATCH_END count={}\", count);" gpu_worker "${gpu_worker}")
-        # A full queue must not retain a producer after its consumer stops.
+        # A full queue now sleeps on its OWN producer condition variable,
+        # which the consumer signals after popping. On Stop, the stop_token
+        # wakes the waiter even when the GPU consumer is permanently blocked.
+        # A cheap TryEmplace keeps the uncontended fast path lock-free.
+        set(producer_wait "        pushed = state.queue.EmplaceWaitWithStopToken(stop_source.get_token(),\n"
+                          "            std::move(command_data), fence, block);")
+        string(FIND "${gpu_worker}" "    state.queue.EmplaceWait(std::move(command_data), fence, block);" old_producer_at)
+        if(old_producer_at LESS 0)
+            message(FATAL_ERROR "Pinned GPU producer source changed")
+        endif()
         string(REPLACE "    state.queue.EmplaceWait(std::move(command_data), fence, block);"
-            "    while (!stop_source.stop_requested() &&\n           !state.queue.TryEmplace(std::move(command_data), fence, block))\n        std::this_thread::sleep_for(std::chrono::microseconds(100));\n    if (stop_source.stop_requested())\n        return state.signaled_fence.load(std::memory_order_relaxed);"
+            "    bool pushed = false;\n"
+            "    if (!stop_source.stop_requested()) {\n"
+            "        pushed = state.queue.TryEmplace(std::move(command_data), fence, block);\n"
+            "        if (!pushed) {\n"
+            "${producer_wait}\n"
+            "        }\n"
+            "    }\n"
+            "    if (!pushed)\n"
+            "        return state.signaled_fence.load(std::memory_order_relaxed);"
             gpu_worker "${gpu_worker}")
         file(READ "${EDEN_PORT_DIR}/native_gpu_thread.inc" native_gpu_lifecycle)
         string(REPLACE "#include \"diagnostics.h\"" "#include \"${EDEN_PORT_DIR}/diagnostics.h\""
@@ -2017,12 +2050,16 @@ if(EDEN_PS5_OPENGL)
             string(REPLACE "if (count <= 3) LOG_INFO(Render_OpenGL, \"EDEN_GPU_DISPATCH_"
                 "if (count <= 3 || ::Eden::Performance::BootTrace()) LOG_INFO(Render_OpenGL, \"EDEN_GPU_DISPATCH_"
                 gpu_worker "${gpu_worker}")
-            # Time guest-side back-pressure: pushes that found the 8-entry queue full.
-            set(full_wait "    while (!stop_source.stop_requested() &&\n           !state.queue.TryEmplace(std::move(command_data), fence, block))\n        std::this_thread::sleep_for(std::chrono::microseconds(100));")
-            string(FIND "${gpu_worker}" "${full_wait}" full_wait_offset)
-            if(full_wait_offset LESS 0)
-                message(FATAL_ERROR "Pinned GPU queue push changed")
+            # Measure ONLY genuinely full-queue waits; no clocks when quiet.
+            string(FIND "${gpu_worker}" "${producer_wait}" full_wait_at)
+            if(full_wait_at LESS 0)
+                message(FATAL_ERROR "Pinned stop-aware GPU producer wait changed")
             endif()
+            string(REPLACE "${producer_wait}"
+                "        { ::Eden::Performance::DiagnosticTimer full_timer(::Eden::Performance::gpu_queue_full);\n"
+                "${producer_wait}\n"
+                "        }"
+                gpu_worker "${gpu_worker}")ndif()
             string(REPLACE "${full_wait}"
                 "    if (stop_source.stop_requested() ||\n        !state.queue.TryEmplace(std::move(command_data), fence, block)) {\n        ::Eden::Performance::DiagnosticTimer full_timer(::Eden::Performance::gpu_queue_full);\n${full_wait}\n    }"
                 gpu_worker "${gpu_worker}")
