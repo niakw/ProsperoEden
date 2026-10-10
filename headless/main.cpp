@@ -490,7 +490,7 @@ int main(int argc, char** argv) {
             for (const char* name : {
                     "stderr.log", "stderr.first.log", "stderr.prev.log", "stderr.prev.first.log",
                     "heap.log", "heap.first.log", "heap.prev.log", "heap.prev.first.log",
-                    "boot-trace.txt", "boot-trace.prev.txt", "boot-trace.sandbox-prev.txt"})
+                    "result.tsv", "boot-trace.txt", "boot-trace.prev.txt", "boot-trace.sandbox-prev.txt"})
                 (void)std::remove(Eden::LogFile(name).c_str());
             for (const char* name : {
                     "eden_log.txt", "eden_log.txt.first.txt", "eden_log.txt.old.txt"})
@@ -636,8 +636,12 @@ int main(int argc, char** argv) {
         // Whether Eden's large tables can be sparse on this console (src/memory_pages.cpp),
         // decided now: every session's log says it, with or without a game.
         (void)Common::SparseTablesAvailable();
-        report = std::fopen(Eden::LogFile("result.tsv").c_str(), "w");
-        if (!report) { report = stdout; return 2; }
+        // The development TSV is routine telemetry, not a crash report.
+        // Never create it when Detailed Logging is disabled.
+        if (persist_detailed_logs) {
+            report = std::fopen(Eden::LogFile("result.tsv").c_str(), "w");
+            if (!report) { report = stdout; return 2; }
+        }
         std::puts("[headless-startup] directories_ready");
 #ifdef EDEN_DEV_VULKAN
         if (std::filesystem::exists(Eden::AppFile("sdk-audit.txt"))) {
