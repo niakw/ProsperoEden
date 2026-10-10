@@ -77,9 +77,9 @@ void RasterizerVulkan::DispatchCompute() {"""),
     ('#include <algorithm>', '#include <algorithm>\n#include "performance.h"'),
     # Guest threads take the cache locks here (tracked-page writes, flush-area reads).
     ('bool RasterizerVulkan::OnCPUWrite(DAddr addr, u64 size) {',
-     'bool RasterizerVulkan::OnCPUWrite(DAddr addr, u64 size) {\n    ::Eden::Performance::Timer guest_write_timer(::Eden::Performance::guest_cpu_write);'),
+     'bool RasterizerVulkan::OnCPUWrite(DAddr addr, u64 size) {\n    ::Eden::Performance::DiagnosticTimer guest_write_timer(::Eden::Performance::guest_cpu_write);'),
     ('VideoCore::RasterizerDownloadArea RasterizerVulkan::GetFlushArea(DAddr addr, u64 size) {',
-     'VideoCore::RasterizerDownloadArea RasterizerVulkan::GetFlushArea(DAddr addr, u64 size) {\n    ::Eden::Performance::Timer guest_read_timer(::Eden::Performance::guest_cpu_read);'),
+     'VideoCore::RasterizerDownloadArea RasterizerVulkan::GetFlushArea(DAddr addr, u64 size) {\n    ::Eden::Performance::DiagnosticTimer guest_read_timer(::Eden::Performance::guest_cpu_read);'),
     # ... and wait for those locks spinning briefly before sleeping (performance.h GuestCacheLock).
     ('        std::scoped_lock lock{texture_cache.mutex};\n        auto area = texture_cache.GetFlushArea(addr, size);',
      '        ::Eden::Performance::GuestCacheLock(texture_cache.mutex);\n'
@@ -97,12 +97,13 @@ void RasterizerVulkan::DispatchCompute() {"""),
      '    const u32 CHECK_MASK = ::Eden::Performance::dispatch_mask.load(std::memory_order_relaxed);\n#endif // __ANDROID__\n\n'),
     # Per-draw count for the GPU-thread report (dispatch time per draw).
     ('    FlushWork();\n    gpu_memory->FlushCaching();\n\n    GraphicsPipeline* const pipeline{pipeline_cache.CurrentGraphicsPipeline()};',
-     '    ::Eden::Performance::rasterizer_draw.calls.fetch_add(1, std::memory_order_relaxed);\n    FlushWork();\n    gpu_memory->FlushCaching();\n\n    GraphicsPipeline* const pipeline{pipeline_cache.CurrentGraphicsPipeline()};'),
+     '    if (::Eden::Performance::detailed_gpu_profile.load(std::memory_order_relaxed))\n'
+     '        ::Eden::Performance::rasterizer_draw.calls.fetch_add(1, std::memory_order_relaxed);\n    FlushWork();\n    gpu_memory->FlushCaching();\n\n    GraphicsPipeline* const pipeline{pipeline_cache.CurrentGraphicsPipeline()};'),
     # A forced release blocks the GPU thread until the fence thread has retired
     # every older fence. Time only that producer-side drain.
     ('    fence_manager.WaitPendingFences(force);',
      '''    if (force) {
-        ::Eden::Performance::Timer drain_timer(::Eden::Performance::gpu_fence_drain);
+        ::Eden::Performance::DiagnosticTimer drain_timer(::Eden::Performance::gpu_fence_drain);
         fence_manager.WaitPendingFences(force);
     } else {
         fence_manager.WaitPendingFences(force);
@@ -329,7 +330,7 @@ adapt('src/video_core/renderer_vulkan/vk_present_manager.cpp', 'vulkan_present_m
     # GetRenderFrame runs on the GPU thread: time its free-frame and
     # present-completion waits (FIFO back-pressure on the producer).
     ('    // Wait for free presentation frames\n    std::unique_lock lock{free_mutex};',
-     '    // Wait for free presentation frames\n    ::Eden::Performance::Timer present_wait_timer(::Eden::Performance::gpu_present_wait);\n    std::unique_lock lock{free_mutex};'),
+     '    // Wait for free presentation frames\n    ::Eden::Performance::DiagnosticTimer present_wait_timer(::Eden::Performance::gpu_present_wait);\n    std::unique_lock lock{free_mutex};'),
     ('PresentThread(token);', '''try {
             PresentThread(token);
         } catch (...) {
