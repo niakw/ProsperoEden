@@ -339,6 +339,29 @@ validate_launcher_http_budget() {
 }
 apply_one "$root/headless/backports/eden-ps5-launcher-fast-http.patch" "$eden/.encore-backport-launcher-http.sha256" validate_launcher_http_budget
 apply_one "$root/headless/backports/eden-ps5-bounded-logging.patch" "$eden/.encore-backport-ps5-bounded-logging.sha256" validate_ps5_bounded_logging
+# A separate receipt is essential: already-cached bounded-logging sources
+# must receive this exact delta rather than accept a changed old hash.
+validate_ps5_crash_only_logging() {
+python3 - "$eden" <<'PYQUIET'
+from pathlib import Path
+import sys
+s=(Path(sys.argv[1])/'src/common/logging.cpp').read_text()
+required=(
+    'extern "C" bool eden_native_detailed_logging() noexcept;',
+    'extern "C" unsigned eden_native_logging_generation() noexcept;',
+    'if (!eden_native_detailed_logging()) return;',
+    'const auto generation = eden_native_logging_generation();',
+    'file.reset();',
+    'last_generation = generation;',
+    'if (file && eden_native_detailed_logging()) file->Flush();',
+)
+for text in required:
+    if text not in s:
+        raise SystemExit('PS5 crash-only logging patch missing: '+text)
+print('Eden PS5 crash-only native file backend: PASS')
+PYQUIET
+}
+apply_one "$root/headless/backports/eden-ps5-crash-only-logging.patch" "$eden/.encore-backport-ps5-crash-only-logging.sha256" validate_ps5_crash_only_logging
 validate_ps5_gpu_memory_mapping() {
 python3 - "$eden" <<'PYGPU'
 from pathlib import Path
