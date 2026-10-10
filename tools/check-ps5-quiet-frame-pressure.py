@@ -43,6 +43,7 @@ assert "if (pressure_now[i] < frame_pressure_previous[i])" in present
 assert "counter" in present  # explicit reset handling; no bogus negative deltas
 assert "std::this_thread::sleep" not in present
 assert "frame_pressure_previous" in header
+assert 'cache_wait_ms=%.3f jit_ms=%.3f' in graphics
 
 # A fixed count of atomic loads at five-second boundaries; no new per-frame
 # filesystem calls, mallocs, locks, kernel memory walks, or clock probes.
@@ -52,14 +53,14 @@ for metric in ("gpu_queue_wait.nanoseconds", "gpu_dispatch.nanoseconds",
                "gpu_fence_drain.nanoseconds", "gpu_present_wait.nanoseconds",
                "gpu_queue_full.nanoseconds", "guest_dequeue_wait.nanoseconds",
                "guest_sync_wait.nanoseconds", "guest_ipc_wait.nanoseconds",
-               "cache_lock_contended", "cache_lock_blocked", "compilation"):
+               "cache_lock_contended", "cache_lock_blocked", "cache_lock_wait_ns", "compilation"):
     assert metric in snapshot, metric
 assert "std::memory_order_relaxed" in snapshot
 assert "jit_ns += read(core.nanoseconds)" in snapshot
 assert "std::printf(" not in snapshot
 assert "NowNs()" not in snapshot
 assert "mutex" not in snapshot and "malloc" not in snapshot
-assert "std::array<unsigned long long, 11>" in header
+assert "std::array<unsigned long long, 12>" in header
 
 # In the pinned CMake HLE-service injector, avoid TWO clock probes and the
 # HleCounters atomic hash-table update for every quiet guest IPC request.
