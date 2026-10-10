@@ -24,6 +24,10 @@
 #include <string_view>
 
 namespace Eden::Crash {
+// GPU-owner writes at most once per 64 completed commands. Signal handlers
+// only read this lock-free breadcrumb while composing an actual crash report;
+// quiet gameplay does not create a log file or sample clocks per command.
+inline std::atomic<std::uint64_t> gpu_completed_commands{0};
 // Threads that named themselves (the SetCurrentThreadName hook, performance.cpp), for the
 // report's "thread" line. Lock-free: the handler reads it on a thread that may hold any lock.
 struct NamedThread {
