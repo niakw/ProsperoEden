@@ -76,6 +76,7 @@ namespace Eden::Performance {
 inline std::atomic<bool> detailed_gpu_profile{false};
 inline std::atomic<unsigned> cache_lock_spins{0};
 inline std::atomic<unsigned long long> cache_lock_contended{0}, cache_lock_blocked{0};
+inline std::atomic<unsigned long long> cache_lock_wait_ns{0};
 LOCK
 
 TIMER
@@ -100,6 +101,7 @@ int main() {
     for (auto& t:threads) t.join();
     assert(value==8*20000);
     assert(cache_lock_contended.load()==0 && cache_lock_blocked.load()==0);
+    assert(cache_lock_wait_ns.load()==0);
     // No CPU clock reads or atomic Totals updates for all quiet timers.
     Totals total;
     for (int i=0;i<20000;++i) { DiagnosticTimer quiet{total}; }
@@ -119,6 +121,7 @@ int main() {
     mutex.unlock();
     contended.join();
     assert(cache_lock_contended.load()>=1 && cache_lock_blocked.load()>=1);
+    assert(cache_lock_wait_ns.load()>0);
     assert(value==8*20000+1);
     std::puts("PASS: quiet cache lock semantics and zero DEV timers; detailed counters preserved");
 }
