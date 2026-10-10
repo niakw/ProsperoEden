@@ -64,3 +64,15 @@ firmware 13.60 can confirm native filesystem/device behavior.
 
 The reproducible source-only check is gated in the core GitHub preflight,
 not a certification that firmware-native filesystem and PS5 FPS have passed.
+
+## Quiet CPU-side formatting (follow-up)
+
+The PS5 Vulkan/OpenGL five-second FPS and pressure log formatters now run
+only when Detailed Logging is enabled. With the option OFF, the renderer
+maintains the essential low-cost interval counters but skips the printf,
+per-window string formatting, full GPU summary and stdout flush. Periodic
+counter baselines still advance to prevent false giant deltas after a toggle.
+
+Old diagnostic marker files (such as frame-profile.txt, cost-run.txt and
+pc-sample.txt) cannot force expensive probes when the user setting is OFF.
+They no longer silently defeat the crash-only preference.
