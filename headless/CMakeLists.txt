@@ -2011,7 +2011,7 @@ if(EDEN_PS5_OPENGL)
                     message(FATAL_ERROR "Pinned GPU worker ${entry} dispatch changed")
                 endif()
                 string(REPLACE "${gpu_call}"
-                    "                { ::Eden::Performance::DiagnosticTimer category_timer(::Eden::Performance::${metric});\\n${gpu_call}\\n                }"
+                    "                { ::Eden::Performance::DiagnosticTimer category_timer(::Eden::Performance::${metric});\n${gpu_call}\n                }"
                     gpu_worker "${gpu_worker}")
             endforeach()
             string(REPLACE "if (count <= 3) LOG_INFO(Render_OpenGL, \"EDEN_GPU_DISPATCH_"
