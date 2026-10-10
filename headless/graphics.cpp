@@ -53,6 +53,23 @@ HudClock vulkan_hud_clock;
 double vulkan_hud_stats_time{}, vulkan_hud_speed{};
 #endif
 HudSnapshot vulkan_hud;
+// Never sample clocks or traverse HLE data on each present. These cumulative
+// counters need just 11 relaxed loads plus three JIT totals every five seconds.
+// Their deltas are concurrent worker time, NOT additive wall-clock frame time.
+using FramePressureNumbers = std::array<unsigned long long, 11>;
+FramePressureNumbers CaptureFramePressure() noexcept {
+    using namespace Eden::Performance;
+    const auto read = [](const std::atomic<unsigned long long>& value) {
+        return value.load(std::memory_order_relaxed);
+    };
+    unsigned long long jit_ns = 0;
+    for (const auto& core : compilation) jit_ns += read(core.nanoseconds);
+    return {read(gpu_queue_wait.nanoseconds), read(gpu_dispatch.nanoseconds),
+            read(gpu_fence_drain.nanoseconds), read(gpu_present_wait.nanoseconds),
+            read(gpu_queue_full.nanoseconds), read(guest_dequeue_wait.nanoseconds),
+            read(guest_sync_wait.nanoseconds), read(guest_ipc_wait.nanoseconds),
+            read(cache_lock_contended), read(cache_lock_blocked), jit_ns};
+}
 bool vulkan_loading{};
 double vulkan_loading_start{-1};
 unsigned vulkan_loading_frames{};
@@ -257,12 +274,17 @@ public:
         }
         ++presented_frames;
 #ifdef EDEN_DEV_PROFILE
-        static const double capture_start = now;
-        static bool captured_passes = false;
-        if (!captured_passes && now - capture_start >= 150.0) {
-            captured_passes = true;
-            Eden::Performance::capture_passes = 8;
-            std::printf("EDEN_DEV_PASS_REQUEST time=%.3f\n", now - capture_start);
+        // R291: DEV capture passes were armed on every game after 150 seconds
+        // even with Detailed Logging disabled, and static state leaked across
+        // games. Keep the feature only in explicit deep-frame diagnostics.
+        if (Eden::Performance::detailed_gpu_profile.load(std::memory_order_relaxed) &&
+            !captured_passes) {
+            if (capture_start < 0) capture_start = now;
+            if (now - capture_start >= 150.0) {
+                captured_passes = true;
+                Eden::Performance::capture_passes = 8;
+                std::printf("EDEN_DEV_PASS_REQUEST time=%.3f\n", now - capture_start);
+            }
         }
         static double sample_start = now, prior_frame = now, worst_frame = 0;
         static unsigned sample_frames = 0;
@@ -469,6 +491,10 @@ private:
     unsigned startup_guest_frames{};
     StartupGate startup_gate;
     HudClock clock;
+#ifdef EDEN_DEV_PROFILE
+    double capture_start{-1};
+    bool captured_passes{};
+#endif
 #ifndef EDEN_DEV_PROFILE
     double sample_start{-1}, prior_sample_frame{}, sample_worst{};
     unsigned sample_frames{};
@@ -635,6 +661,7 @@ void GraphicsWindow::OnFrameDisplayed() {
         ++frame_total;
         if (frame_sample_start < 0) {
             frame_sample_start = frame_sample_last = now;
+            frame_pressure_previous = CaptureFramePressure();
         } else {
             ++frame_sample_count;
             const double present_interval = now - frame_sample_last;
@@ -692,10 +719,40 @@ void GraphicsWindow::OnFrameDisplayed() {
                         experimental_pacing_bins[4], experimental_pacing_bins[5]);
                     experimental_pacing_bins = {};
                 }
+                // Correlate slow five-second intervals with GPU queueing,
+                // guest synchronization, cache contention and JIT work without
+                // traversing development tables or locking the renderer.
+                const auto pressure_now = CaptureFramePressure();
+                FramePressureNumbers pressure_delta{};
+                bool pressure_valid = true;
+                for (std::size_t i = 0; i < pressure_delta.size(); ++i) {
+                    if (pressure_now[i] < frame_pressure_previous[i]) {
+                        pressure_valid = false;
+                        break;
+                    }
+                    pressure_delta[i] = pressure_now[i] - frame_pressure_previous[i];
+                }
+                if (pressure_valid) {
+                    constexpr double to_ms = 1.0 / 1'000'000.0;
+                    std::printf("EDEN_FRAME_PRESSURE frame=%u gpu_idle_ms=%.3f gpu_dispatch_ms=%.3f "
+                                "gpu_fence_ms=%.3f gpu_present_ms=%.3f gpu_full_ms=%.3f "
+                                "guest_dequeue_ms=%.3f guest_sync_ms=%.3f guest_ipc_ms=%.3f "
+                                "cache_contended=%llu cache_blocked=%llu jit_ms=%.3f\n",
+                        frame_total, pressure_delta[0] * to_ms, pressure_delta[1] * to_ms,
+                        pressure_delta[2] * to_ms, pressure_delta[3] * to_ms,
+                        pressure_delta[4] * to_ms, pressure_delta[5] * to_ms,
+                        pressure_delta[6] * to_ms, pressure_delta[7] * to_ms,
+                        pressure_delta[8], pressure_delta[9], pressure_delta[10] * to_ms);
+                } else {
+                    std::printf("EDEN_FRAME_PRESSURE frame=%u counters_reset=1\n", frame_total);
+                }
+                frame_pressure_previous = pressure_now;
                 Eden::Performance::ReportVulkan();
 #ifdef EDEN_DEV_PROFILE
-                // Composite runs on the GPU thread, so its owner CPU clock is valid here.
-                Eden::Performance::ReportGpuThread(frame_total);
+                // HLE table scan + CPU snapshot can stall the compositor itself.
+                // Only run with Detailed Logging or explicit frame-profile.txt.
+                if (Eden::Performance::detailed_gpu_profile.load(std::memory_order_relaxed))
+                    Eden::Performance::ReportGpuThread(frame_total);
 #endif
                 std::fflush(stdout);
                 frame_sample_start = now;
