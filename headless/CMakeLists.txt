@@ -2059,9 +2059,6 @@ if(EDEN_PS5_OPENGL)
                 "        { ::Eden::Performance::DiagnosticTimer full_timer(::Eden::Performance::gpu_queue_full);\n"
                 "${producer_wait}\n"
                 "        }"
-                gpu_worker "${gpu_worker}")ndif()
-            string(REPLACE "${full_wait}"
-                "    if (stop_source.stop_requested() ||\n        !state.queue.TryEmplace(std::move(command_data), fence, block)) {\n        ::Eden::Performance::DiagnosticTimer full_timer(::Eden::Performance::gpu_queue_full);\n${full_wait}\n    }"
                 gpu_worker "${gpu_worker}")
         endif()
         write_derived("${PORT_BUILD_DIR}/gpu_thread.cpp" "${gpu_worker}")
