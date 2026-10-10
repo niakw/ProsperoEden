@@ -88,3 +88,11 @@ The generated SPSC header is used by the cancellation harness, with the
 optional per-request DEV timer removed *only inside that fixture*. This
 prevents a successful source-only check from masking a broken CMake-derived
 GPU worker, and catches a missed stop-token wake before distributing a PKG.
+
+## Native build gate
+
+The complete host regression suite passed on GitHub Actions
+[#38085456806](https://github.com/niakw/Prospero.Eden-Encore/actions/runs/38085456806).
+A separate PS5 all-on test compilation is required to verify actual CMake
+generation, PS5 libc++ stop-token CV support and linker behavior before
+any physical console A/B. Do not publish an immutable release from this test.
