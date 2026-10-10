@@ -55,9 +55,9 @@ double vulkan_hud_stats_time{}, vulkan_hud_speed{};
 #endif
 HudSnapshot vulkan_hud;
 // Never sample clocks or traverse HLE data on each present. These cumulative
-// counters need just 11 relaxed loads plus three JIT totals every five seconds.
+// counters need just 12 relaxed loads plus three JIT totals every five seconds.
 // Their deltas are concurrent worker time, NOT additive wall-clock frame time.
-using FramePressureNumbers = std::array<unsigned long long, 11>;
+using FramePressureNumbers = std::array<unsigned long long, 12>;
 FramePressureNumbers CaptureFramePressure() noexcept {
     using namespace Eden::Performance;
     const auto read = [](const std::atomic<unsigned long long>& value) {
@@ -69,7 +69,8 @@ FramePressureNumbers CaptureFramePressure() noexcept {
             read(gpu_fence_drain.nanoseconds), read(gpu_present_wait.nanoseconds),
             read(gpu_queue_full.nanoseconds), read(guest_dequeue_wait.nanoseconds),
             read(guest_sync_wait.nanoseconds), read(guest_ipc_wait.nanoseconds),
-            read(cache_lock_contended), read(cache_lock_blocked), jit_ns};
+            read(cache_lock_contended), read(cache_lock_blocked),
+            read(cache_lock_wait_ns), jit_ns};
 }
 bool vulkan_loading{};
 double vulkan_loading_start{-1};
@@ -745,12 +746,13 @@ void GraphicsWindow::OnFrameDisplayed() {
                     std::printf("EDEN_FRAME_PRESSURE frame=%u gpu_idle_ms=%.3f gpu_dispatch_ms=%.3f "
                                 "gpu_fence_ms=%.3f gpu_present_ms=%.3f gpu_full_ms=%.3f "
                                 "guest_dequeue_ms=%.3f guest_sync_ms=%.3f guest_ipc_ms=%.3f "
-                                "cache_contended=%llu cache_blocked=%llu jit_ms=%.3f\n",
+                                "cache_contended=%llu cache_blocked=%llu cache_wait_ms=%.3f jit_ms=%.3f\n",
                         frame_total, pressure_delta[0] * to_ms, pressure_delta[1] * to_ms,
                         pressure_delta[2] * to_ms, pressure_delta[3] * to_ms,
                         pressure_delta[4] * to_ms, pressure_delta[5] * to_ms,
                         pressure_delta[6] * to_ms, pressure_delta[7] * to_ms,
-                        pressure_delta[8], pressure_delta[9], pressure_delta[10] * to_ms);
+                        pressure_delta[8], pressure_delta[9], pressure_delta[10] * to_ms,
+                        pressure_delta[11] * to_ms);
                 } else {
                     std::printf("EDEN_FRAME_PRESSURE frame=%u counters_reset=1\n", frame_total);
                 }
