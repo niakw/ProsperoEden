@@ -1,7 +1,11 @@
 --- a/src/common/logging.cpp
 +++ b/src/common/logging.cpp
-@@ -239,9 +239,17 @@
+@@ -239,9 +239,25 @@
  #ifndef __OPENORBIS__
++#ifdef PS5_NATIVE
++extern "C" bool eden_native_detailed_logging() noexcept;
++extern "C" unsigned eden_native_logging_generation() noexcept;
++#endif
  /// @brief Backend that writes to a file passed into the constructor
  struct FileBackend final : public Backend {
 -    explicit FileBackend(const std::filesystem::path filename) noexcept {
@@ -11,6 +15,10 @@
 +#ifdef PS5_NATIVE
 +        first_filename = filename;
 +        first_filename += ".first.txt";
++        last_generation = eden_native_logging_generation();
++        // No FileBackend file at all while detailed logs are disabled.
++        // The crash reporter is independent and always persists fatal reports.
++        if (!eden_native_detailed_logging()) return;
 +        // A new session owns one bounded first segment and one rolling recent segment.
 +        // Stale first segments are disposable; the previous session's recent tail is
 +        // still moved to .old.txt for crash collection before logging starts.
@@ -19,7 +27,32 @@
          // Existence checks are done within the functions themselves.
          // We don't particularly care if these succeed or not.
          void(FS::RemoveFile(old_filename));
-@@ -279,6 +287,27 @@
+@@ -251,7 +267,24 @@
+     ~FileBackend() noexcept override = default;
+ 
+     void Write(const Entry& entry) noexcept override {
+         if (!enabled)
+             return;
++#ifdef PS5_NATIVE
++        if (!eden_native_detailed_logging()) return;
++        const auto generation = eden_native_logging_generation();
++        if (generation != last_generation) {
++            // Opening after quiet mode must use a NEW inode, not the old
++            // unlinked file descriptor from a previous detailed session.
++            file.reset();
++            last_generation = generation;
++            bytes_written = 0;
++            rotated = false;
++            error_events = 0;
++        }
++        if (!file) {
++            file.emplace(filename, FS::FileAccessMode::Write, FS::FileType::TextFile);
++            if (!file->IsOpen()) return;
++        }
++#endif
+ 
+         auto message = FormatLogMessage(entry);
+@@ -279,6 +312,27 @@
              file->Flush();
  
          using namespace Common::Literals;
@@ -47,7 +80,7 @@
          // Prevent logs from exceeding a set maximum size in the event that log entries are spammed.
          const auto write_limit = Settings::values.extended_logging.GetValue() ? 1_GiB : 100_MiB;
          const bool write_limit_exceeded = bytes_written > write_limit;
-@@ -289,12 +318,54 @@
+@@ -289,12 +343,55 @@
                  enabled = false;
              file->Flush();
          }
@@ -55,7 +88,8 @@
      }
  
      void Flush() noexcept override {
-         file->Flush();
+-        file->Flush();
++        if (file && eden_native_detailed_logging()) file->Flush();
      }
  private:
 +#ifdef PS5_NATIVE
@@ -98,7 +132,16 @@
 +    std::filesystem::path first_filename;
 +    bool rotated = false;
 +    std::size_t error_events = 0;
++    unsigned last_generation = 0;
 +#endif
      std::optional<FS::IOFile> file;
      std::size_t bytes_written = 0;
      bool enabled = true;
+@@ -426,4 +523,7 @@
+ void FmtLogMessageImpl(Class log_class, Level log_level, const char* filename, unsigned int line_num, const char* function, fmt::string_view format, const fmt::format_args& args) {
++#ifdef PS5_NATIVE
++    if (!eden_native_detailed_logging()) return;
++#endif
+     if (logging_instance && logging_instance->filter.CheckMessage(log_class, log_level)) {
+         auto const flush = ::Settings::values.log_flush_line.GetValue();
+         char buffer[BUFSIZ];
