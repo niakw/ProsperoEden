@@ -40,7 +40,7 @@ private:
     std::array<unsigned, 6> experimental_pacing_bins{};
     // Five-second delta baselines belong to this GraphicsWindow, NOT a static
     // shared across titles. Read 11 cheap counters at the report boundary.
-    std::array<unsigned long long, 11> frame_pressure_previous{};
+    std::array<unsigned long long, 12> frame_pressure_previous{};
     EGLDisplay display{EGL_NO_DISPLAY};
     EGLConfig config{};
     EGLContext root{EGL_NO_CONTEXT};
