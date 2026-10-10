@@ -10,6 +10,17 @@ body=worker[start:worker.index('\n} // namespace',start)]
 assert 'state.queue.EmplaceWait(' not in body
 assert 'state.queue.EmplaceWaitWithStopToken(' in body
 assert 'std::this_thread::sleep_for(std::chrono::microseconds(100))' not in body
+# This fixture exercises queue cancellation, not the DEV time accountant.
+# Remove only the optional RAII profiling wrapper from the generated body.
+timer_start = '        { ::Eden::Performance::DiagnosticTimer full_timer(::Eden::Performance::gpu_queue_full);\n'
+timer_call = ('        pushed = state.queue.EmplaceWaitWithStopToken(stop_source.get_token(),\n'
+              '            std::move(command_data), fence, block);\n'
+              '        }')
+if timer_start in body:
+    assert body.count(timer_start) == 1
+    assert body.count(timer_call) == 1
+    body = body.replace(timer_start, '')
+    body = body.replace(timer_call, timer_call[:-len('\n        }')])
 main=(root/'headless/main.cpp').read_text()
 assert 'system.Pause();' not in main
 code=r'''
